@@ -1,20 +1,32 @@
 import logging
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import Groq
 from upstash_redis import Redis
 
-# Enable logging
+# --- Dummy HTTP Server for Render Free Tier Health Check ---
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
+# --- Telegram Bot Code ---
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Fetch credentials safely from Environment Variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 UPSTASH_URL = os.getenv("UPSTASH_URL")
 UPSTASH_TOKEN = os.getenv("UPSTASH_TOKEN")
 
-# Initialize API clients
 groq_client = Groq(api_key=GROQ_API_KEY)
 redis_client = Redis(url=UPSTASH_URL, token=UPSTASH_TOKEN)
 
@@ -86,6 +98,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Kama uko tayari kwa next topic, tuma 'next' au click /next!")
 
 if __name__ == "__main__":
+    # Start the dummy web server in the background for Render
+    threading.Thread(target=run_web_server, daemon=True).start()
+
     print("Bot starting up...")
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
